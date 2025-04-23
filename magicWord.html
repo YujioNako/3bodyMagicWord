@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>恒星3D可视化</title>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #container { display: flex; height: 100vh; }
+        #three-container { flex: 3; position: relative; }
+        #controls { 
+            flex: 1; 
+            padding: 20px;
+            background: #f0f0f0;
+            overflow-y: auto;
+        }
+        .canvas2d { 
+            width: 300px; 
+            height: 300px; 
+            margin: 10px 0;
+            border: 1px solid #ccc;
+        }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="three-container"></div>
+        <div id="controls">
+            <div class="control-group">
+                <h3>摄像机控制</h3>
+                <div class="control">
+                    <label>X: <input type="number" id="posX" step="1"></label>
+                    <label>Y: <input type="number" id="posY" step="1" value="0"></label>
+                    <label>Z: <input type="number" id="posZ" step="1" value="0"></label>
+                    <label>FOV: <input type="number" id="Fov" step="1" value="90"></label>
+                    <label>DistLimit: <input type="number" id="Dist" step="1" value="4"></label>
+                </div>
+                <button onclick="resetCamera()">重置视角</button>
+            </div>
+            
+            <h3>投影视图</h3>
+            <canvas id="yz-projection" width="300" height="300" class="canvas2d"></canvas>
+            <canvas id="xz-projection" width="300" height="300" class="canvas2d"></canvas>
+            <canvas id="xy-projection" width="300" height="300" class="canvas2d"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script>
+        let scene, camera, renderer, controls;
+        let stars = [];
+        let data = [];
+        let rows = null;
+        let ranges = {
+            x: { min: 0, max: 0 },
+            y: { min: 0, max: 0 },
+            z: { min: 0, max: 0 }
+        };
+        // 光谱颜色映射
+        const SPECTRAL_COLOR = {
+            'O':'#9bb0ff', 'B':'#aabfff', 'A':'#cad7ff',
+            'F':'#f8f7ff', 'G':'#ffe169', 'K':'#ffd27a',
+            'M':'#ffb347', 'default':'#fff'
+        };
+        let DIST_LIMIT = 4
+
+        // 初始化
+        async function init() {
+            await loadCSVData();
+            setupThreeScene();
+            setupProjectionCanvases();
+            setupEventListeners();
+            animate();
+        }
+
+        // CSV数据加载
+        async function loadCSVData() {
+            if (!rows) {
+                // 使用 fetch 获取.gz压缩文件
+                const response = await fetch('hygdata_v32.csv.gz'); // 文件名改为.gz格式
+                const arrayBuffer = await response.arrayBuffer(); // 获取二进制数据
+
+                // 解压gzip内容（需要引入pako库）
+                const decompressedText = pako.inflate(arrayBuffer, { to: 'string' });
+
+                // 处理CSV数据
+                rows = decompressedText.split('\n').slice(1);
+            }
+            
+            data = rows.map(row => {
+                const cols = row.split(',');
+                return {
+                    x: parseFloat(cols[17]),
+                    y: parseFloat(cols[18]),
+                    z: parseFloat(cols[19]),
+                    mag: parseFloat(cols[13]),
+                    name: cols[7],
+                    spect: cols[15]?.[0] ?? 'default',
+                    dist: parseFloat(cols[9])
+                };
+            }).filter(d => !isNaN(d.x)&&Math.abs(d.x)<=DIST_LIMIT&&Math.abs(d.y)<=DIST_LIMIT&&Math.abs(d.z)<=DIST_LIMIT);
+
+            // 计算坐标范围
+            ranges.x.min = Math.min(...data.map(d => d.x));
+            ranges.x.max = Math.max(...data.map(d => d.x));
+            ranges.y.min = Math.min(...data.map(d => d.y));
+            ranges.y.max = Math.max(...data.map(d => d.y));
+            ranges.z.min = Math.min(...data.map(d => d.z));
+            ranges.z.max = Math.max(...data.map(d => d.z));
+        }
+
+        function calculateDistance(fovDegrees, DIST_LIMIT) {
+            // 将FOV从度数转为弧度
+            const fovRadians = (fovDegrees * Math.PI) / 180;
+    
+            // 计算所需距离：d = (DIST_LIMIT) / tan(fov/2)
+            const requiredDistance = DIST_LIMIT / Math.tan(fovRadians / 2);
+    
+            return requiredDistance;
+        }
+
+
+        // 3D场景设置
+        function setupThreeScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(90, 1, 0.1, 10000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            
+            // 初始化渲染器
+            renderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
+            document.getElementById('three-container').innerHTML = ''; // 清空容器
+            document.getElementById('three-container').appendChild(renderer.domElement);
+
+            // 创建几何体（自动中心在原点）
+            const geometry_square = new THREE.BoxGeometry(
+            2 * DIST_LIMIT,
+            2 * DIST_LIMIT,
+            2 * DIST_LIMIT
+            );
+
+            // 创建边线几何体
+            const edges = new THREE.EdgesGeometry(geometry_square);
+
+            // 创建线框材质
+            const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0x00ff00,
+            linewidth: DIST_LIMIT/1000
+            });
+
+            // 组合成线框对象
+            const cubeFrame = new THREE.LineSegments(edges, lineMaterial);
+
+            // 添加到场景
+            scene.add(cubeFrame);
+
+            // 创建星群
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(data.length * 3);
+            data.forEach((d, i) => {
+                positions[i*3] = d.x;
+                positions[i*3+1] = d.y;
+                positions[i*3+2] = d.z;
+            });
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            function createCircularMaterial(options = {}) {
+              const {
+                color = '#ff0000',  // 默认红色
+                textureSize = 256,  // 纹理尺寸
+                materialOptions = {} // 其他材质配置
+              } = options;
+
+              // 创建圆形纹理
+              const canvas = document.createElement('canvas');
+              canvas.width = textureSize;
+              canvas.height = textureSize;
+              const ctx = canvas.getContext('2d');
+  
+              // 动态计算圆形参数
+              const centerX = canvas.width / 2;
+              const centerY = canvas.height / 2;
+              const radius = centerX;
+  
+              ctx.beginPath();
+              ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+              ctx.fillStyle = color;
+              ctx.fill();
+
+              // 创建 Three.js 纹理
+              const texture = new THREE.CanvasTexture(canvas);
+              texture.needsUpdate = true;
+
+              // 合并默认材质配置和用户自定义配置
+              const mergedOptions = {
+                map: texture,            // 应用圆形纹理
+                transparent: true,       // 启用透明
+                alphaTest: 0.5,          // 透明度阈值
+                size: 0.1,                // 默认点尺寸
+                ...materialOptions       // 合并用户配置
+              };
+
+              return new THREE.PointsMaterial(mergedOptions);
+            }
+      
+            const material = createCircularMaterial({
+              color: '#ff0000',
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            
+            stars = new THREE.Points(geometry, material);
+            scene.add(stars);
+
+            // 摄像机初始位置
+            if (!document.getElementById('posX').value) {
+                camera.position.set(DIST_LIMIT+1.1*calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
+            } else {
+                camera.position.set(document.getElementById('posX').value||0, document.getElementById('posY').value||0, document.getElementById('posZ').value||0);
+            }
+            document.getElementById('posX').value = camera.position.x;
+            document.getElementById('posY').value = camera.position.y;
+            document.getElementById('posZ').value = camera.position.z;
+            camera.lookAt(0, 0, 0);
+            camera.up.set(0, 0, 1);
+            
+            // 轨道控制器
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.addEventListener('change', updateProjections);
+        }
+
+        // 2D投影设置
+        function setupProjectionCanvases() {
+            ['xy', 'xz', 'yz'].forEach(plane => {
+                const canvas = document.getElementById(`${plane}-projection`);
+                const ctx = canvas.getContext('2d');
+                
+                // 清空画布
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制对角线
+                // 1. 设置线条属性
+                ctx.lineWidth = 1;            // 线宽
+                ctx.strokeStyle = 'green';     // 颜色
+                ctx.setLineDash([5, 5]);      // 虚线样式（5像素线段 + 5像素间隙）
+
+                // 2. 绘制对角线（从左上到右下）
+                ctx.beginPath();              // 开始新路径
+                ctx.moveTo(0, 0);            // 起点（左上角）
+                ctx.lineTo(canvas.width, canvas.height); // 终点（右下角）
+                ctx.stroke();                 // 绘制路径
+
+                // 3. 绘制另一条对角线（从左下到右上）
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height); // 起点（左下角）
+                ctx.lineTo(canvas.width, 0);  // 终点（右上角）
+                ctx.stroke();
+
+                // 绘制Limit方框
+                // 1. 计算方框尺寸和位置
+                const containerWidth = canvas.width;
+                const containerHeight = canvas.height;
+                const boxWidth = containerWidth * 10 / 11;     // 10/11的容器宽度
+                const boxHeight = containerHeight * 10 / 11;   // 10/11的容器高度
+                const centerX = (containerWidth - boxWidth) / 2;  // 水平居中
+                const centerY = (containerHeight - boxHeight) / 2; // 垂直居中
+
+                // 2. 设置线条样式
+                ctx.lineWidth = 1;         // 线宽
+                ctx.strokeStyle = 'green'; // 颜色
+                ctx.setLineDash([5, 5]);   // 虚线样式（4像素线段 + 4像素间隙）
+
+                // 3. 绘制虚线矩形
+                ctx.beginPath();
+                ctx.rect(
+                    centerX,          // 左上角x坐标
+                    centerY,          // 左上角y坐标
+                    boxWidth,         // 宽度
+                    boxHeight         // 高度
+                );
+                ctx.stroke();           // 绘制路径
+                
+                // 绘制投影
+                data.forEach(d => {
+                    const x = mapToCanvas(d[plane[0]], ranges[plane[0]], canvas.width);
+                    const y = mapToCanvas(d[plane[1]], ranges[plane[1]], canvas.height);
+                    
+                    ctx.fillStyle = SPECTRAL_COLOR[d.spect];
+                    ctx.beginPath();
+                    ctx.arc(x, canvas.height - y, 2, 0, 2 * Math.PI);
+                    ctx.fill();
+                    //ctx.fillRect(x, canvas.height - y, 1, 1); // 反转XY轴
+                });
+            });
+        }
+
+        // 坐标映射
+        function mapToCanvas(value, range, canvasSize) {
+            //return ((value - range.min) / (range.max - range.min)) * canvasSize;
+            return ((value + 1.1*DIST_LIMIT) / (2.2*DIST_LIMIT)) * canvasSize;
+        }
+
+        // 更新投影
+        function updateProjections() {
+            ['xy', 'xz', 'yz'].forEach(plane => {
+                const canvas = document.getElementById(`${plane}-projection`);
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制对角线
+                // 1. 设置线条属性
+                ctx.lineWidth = 1;            // 线宽
+                ctx.strokeStyle = 'green';     // 颜色
+                ctx.setLineDash([5, 5]);      // 虚线样式（5像素线段 + 5像素间隙）
+
+                // 2. 绘制对角线（从左上到右下）
+                ctx.beginPath();              // 开始新路径
+                ctx.moveTo(0, 0);            // 起点（左上角）
+                ctx.lineTo(canvas.width, canvas.height); // 终点（右下角）
+                ctx.stroke();                 // 绘制路径
+
+                // 3. 绘制另一条对角线（从左下到右上）
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height); // 起点（左下角）
+                ctx.lineTo(canvas.width, 0);  // 终点（右上角）
+                ctx.stroke();
+
+                // 绘制Limit方框
+                // 1. 计算方框尺寸和位置
+                const containerWidth = canvas.width;
+                const containerHeight = canvas.height;
+                const boxWidth = containerWidth * 10 / 11;     // 10/11的容器宽度
+                const boxHeight = containerHeight * 10 / 11;   // 10/11的容器高度
+                const centerX = (containerWidth - boxWidth) / 2;  // 水平居中
+                const centerY = (containerHeight - boxHeight) / 2; // 垂直居中
+
+                // 2. 设置线条样式
+                ctx.lineWidth = 1;         // 线宽
+                ctx.strokeStyle = 'green'; // 颜色
+                ctx.setLineDash([4, 4]);   // 虚线样式（4像素线段 + 4像素间隙）
+
+                // 3. 绘制虚线矩形
+                ctx.beginPath();
+                ctx.rect(
+                    centerX,          // 左上角x坐标
+                    centerY,          // 左上角y坐标
+                    boxWidth,         // 宽度
+                    boxHeight         // 高度
+                );
+                ctx.stroke();           // 绘制路径
+                
+                // 绘制投影
+                data.forEach(d => {
+                    const x = mapToCanvas(d[plane[0]], ranges[plane[0]], canvas.width);
+                    const y = mapToCanvas(d[plane[1]], ranges[plane[1]], canvas.height);
+                    
+                    ctx.fillStyle = SPECTRAL_COLOR[d.spect];
+                    ctx.beginPath();
+                    ctx.arc(x, canvas.height - y, 2, 0, 2 * Math.PI);
+                    ctx.fill();
+                    //ctx.fillRect(x, canvas.height - y, 1, 1); // 反转XY轴
+                });
+            });
+        }
+
+        // 事件监听
+        function setupEventListeners() {
+            window.addEventListener('resize', onWindowResize);
+            
+            // 摄像机位置控制
+            ['posX', 'posY', 'posZ', 'Fov', 'Dist'].forEach(id => {
+                document.getElementById(id).addEventListener('change', e => {
+                    DIST_LIMIT = parseFloat(document.getElementById('Dist').value) || 4;
+                    if (id==="Dist") {
+                        loadCSVData();
+                    }
+                    setupThreeScene();
+                    camera.fov = parseFloat(document.getElementById('Fov').value) || 90;
+                    camera.updateProjectionMatrix();
+                    updateProjections();
+                    controls.update();
+                });
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
+        }
+
+        function resetCamera() {
+            camera.position.set(DIST_LIMIT+1.1*calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
+            camera.lookAt(0, 0, 0);
+            camera.up.set(0, 0, 1);
+            document.getElementById('posX').value = camera.position.x.toFixed(0);
+            document.getElementById('posY').value = camera.position.y.toFixed(0);
+            document.getElementById('posZ').value = camera.position.z.toFixed(0);
+            document.getElementById('Fov').value = camera.fov;
+            document.getElementById('Dist').value = DIST_LIMIT;
+            controls.update();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
