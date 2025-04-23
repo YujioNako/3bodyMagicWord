@@ -36,6 +36,12 @@
                     <label>FOV: <input type="number" id="Fov" step="1" value="90"></label>
                     <label>DistLimit: <input type="number" id="Dist" step="1" value="4"></label>
                 </div>
+                <h3>中心点控制</h3>
+                <div class="control">
+                    <label>X: <input type="number" id="cenX" step="1" value="0"></label>
+                    <label>Y: <input type="number" id="cenY" step="1" value="0"></label>
+                    <label>Z: <input type="number" id="cenZ" step="1" value="0"></label>
+                </div>
                 <button onclick="resetCamera()">重置视角</button>
             </div>
             
@@ -93,9 +99,9 @@
             data = rows.map(row => {
                 const cols = row.split(',');
                 return {
-                    x: parseFloat(cols[17]),
-                    y: parseFloat(cols[18]),
-                    z: parseFloat(cols[19]),
+                    x: parseFloat(cols[17]) - parseFloat(document.getElementById('cenX').value||0),
+                    y: parseFloat(cols[18]) - parseFloat(document.getElementById('cenY').value||0),
+                    z: parseFloat(cols[19]) - parseFloat(document.getElementById('cenZ').value||0),
                     mag: parseFloat(cols[13]),
                     name: cols[7],
                     spect: cols[15]?.[0] ?? 'default',
@@ -374,10 +380,10 @@
             window.addEventListener('resize', onWindowResize);
             
             // 摄像机位置控制
-            ['posX', 'posY', 'posZ', 'Fov', 'Dist'].forEach(id => {
+            ['posX', 'posY', 'posZ', 'Fov', 'Dist', 'cenX', 'cenY', 'cenZ'].forEach(id => {
                 document.getElementById(id).addEventListener('change', e => {
                     DIST_LIMIT = parseFloat(document.getElementById('Dist').value) || 4;
-                    if (id==="Dist") {
+                    if (id==="Dist" || id==='cenX' || id==='cenY' || id==='cenZ') {
                         loadCSVData();
                     }
                     setupThreeScene();
