@@ -5,10 +5,13 @@
     <meta charset="UTF-8">
     <style>
         body { margin: 0; overflow: hidden; }
-        #container { display: flex; height: 100vh; }
-        #three-container { flex: 3; position: relative; }
+        #container { display: flex; height: 100vh; width: 100vw; }
+        #three-container,#css3d-container { position: fixed; right: 0; }
+        #css3d-container { pointer-events: none!important; }
         #controls { 
-            flex: 1; 
+            position: relative;
+            right: 0;
+            width: 350px;
             padding: 20px;
             background: #f0f0f0;
             overflow-y: auto;
@@ -21,11 +24,22 @@
         }
         .control-group { margin-bottom: 15px; }
         .control-group label { display: block; margin: 5px 0; }
+    .csslabel {
+      background: rgba(255, 255, 255, 0);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-family: Arial;
+      font-size: 14px;
+      color: #ddd;
+      pointer-events: none!important;
+      white-space: nowrap;
+    }
     </style>
 </head>
 <body>
     <div id="container">
         <div id="three-container"></div>
+        <div id="css3d-container"></div>
         <div id="controls">
             <div class="control-group">
                 <h3>摄像机控制</h3>
@@ -53,10 +67,12 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     <script>
-        let scene, camera, renderer, controls;
+        let scene, camera, renderer, controls, cssScene, cssRenderer;
+
         let stars = [];
         let data = [];
         let rows = null;
@@ -103,11 +119,12 @@
                     y: parseFloat(cols[18]) - parseFloat(document.getElementById('cenY').value||0),
                     z: parseFloat(cols[19]) - parseFloat(document.getElementById('cenZ').value||0),
                     mag: parseFloat(cols[13]),
-                    name: cols[7],
+                    name: cols[6],
                     spect: cols[15]?.[0] ?? 'default',
                     dist: parseFloat(cols[9])
                 };
             }).filter(d => !isNaN(d.x)&&Math.abs(d.x)<=DIST_LIMIT&&Math.abs(d.y)<=DIST_LIMIT&&Math.abs(d.z)<=DIST_LIMIT);
+
 
             // 计算坐标范围
             ranges.x.min = Math.min(...data.map(d => d.x));
@@ -140,6 +157,21 @@
             document.getElementById('three-container').innerHTML = ''; // 清空容器
             document.getElementById('three-container').appendChild(renderer.domElement);
 
+
+// 初始化 CSS3DRenderer 场景
+cssScene = new THREE.Scene();
+cssRenderer = new THREE.CSS3DRenderer({ antialias: true });
+cssRenderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
+//cssRenderer.domElement.style.position = 'fixed';
+//cssRenderer.domElement.style.top = '0';
+cssRenderer.domElement.style.pointerEvents = 'none';
+document.getElementById('css3d-container').innerHTML = ''; // 清空容器
+document.getElementById('css3d-container').appendChild(cssRenderer.domElement);
+
+// 创建父容器同步位置
+const parent = new THREE.Group();
+scene.add(parent);
+
             // 创建几何体（自动中心在原点）
             const geometry_square = new THREE.BoxGeometry(
             2 * DIST_LIMIT,
@@ -170,7 +202,33 @@
                 positions[i*3+1] = d.y;
                 positions[i*3+2] = d.z;
             });
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            // 创建星群材质表与星群名称表
+            const materialIndices = new Uint8Array(data.length);
+            const nameIndices = [];
+            data.forEach((d, i) => {
+                materialIndices[i] = Object.keys(SPECTRAL_COLOR).indexOf(d.spect)==-1?7:Object.keys(SPECTRAL_COLOR).indexOf(d.spect);
+                nameIndices.push(d.name=="\"\""?'':d.name);
+            });
+
+            const groups = [[], [], [], [], [], [], [], []]; // 存储每个材质组的坐标
+            const names = [[], [], [], [], [], [], [], []];
+            for (let i = 0; i < positions.length / 3; i++) {
+              const index = materialIndices[i];
+              const x = positions[i * 3];
+              const y = positions[i * 3 + 1];
+              const z = positions[i * 3 + 2];
+              const name = nameIndices[i];
+              groups[index].push(x, y, z);
+              names[index].push(name);
+            }
+
+            // 为每个材质组创建 Geometry
+            const geometries = groups.map(points => {
+              const geometry = new THREE.BufferGeometry();
+              geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+              return geometry;
+            });
 
             function createCircularMaterial(options = {}) {
               const {
@@ -212,14 +270,86 @@
             }
       
             const material = createCircularMaterial({
-              color: '#ff0000',
+              color: SPECTRAL_COLOR['default'],
               materialOptions: {
                 size: 200 / Math.pow(camera.fov, 1.5)
               }
             });
-            
-            stars = new THREE.Points(geometry, material);
-            scene.add(stars);
+            const materialO = createCircularMaterial({
+              color: SPECTRAL_COLOR['O'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            const materialB = createCircularMaterial({
+              color: SPECTRAL_COLOR['B'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            const materialA = createCircularMaterial({
+              color: SPECTRAL_COLOR['A'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            const materialF = createCircularMaterial({
+              color: SPECTRAL_COLOR['F'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            const materialG = createCircularMaterial({
+              color: SPECTRAL_COLOR['G'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            const materialK = createCircularMaterial({
+              color: SPECTRAL_COLOR['K'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+            const materialM = createCircularMaterial({
+              color: SPECTRAL_COLOR['M'],
+              materialOptions: {
+                size: 200 / Math.pow(camera.fov, 1.5)
+              }
+            });
+
+            const materials = [materialO, materialB, materialA, materialF, materialG, materialK, materialM, material];
+
+            // 创建 Points 对象并添加到场景
+            materials.forEach((material, i) => {
+              const points = new THREE.Points(geometries[i], material);
+              scene.add(points);
+            });
+
+// 为每个材质组生成标注
+let index = 0;
+geometries.forEach((geometry, materialIndex) => {
+  const positions = geometry.getAttribute('position').array;
+  for (let i = 0; i < positions.length / 3; i++) {
+    const x = positions[3*i];
+    const y = positions[3*i + 1];
+    const z = positions[3*i + 2];
+    const textContent = names[index][i]||'';
+
+    // 创建CSS文字对象
+    const div = document.createElement('div');
+    div.className = 'csslabel';
+    div.textContent = textContent;
+    const cssObject = new THREE.CSS3DObject(div);
+    cssObject.position.set(x, y, z);
+    cssObject.scale.set(0.02,0.02,1);//缩放标签尺寸
+    cssObject.name = 'csslabel';
+    cssObject.position.x += 0.05;
+    parent.add(cssObject); // 同步位置
+    cssScene.add(cssObject);
+  }
+  index++;
+});
 
             // 摄像机初始位置
             if (!document.getElementById('posX').value) {
@@ -295,7 +425,7 @@
                     const x = mapToCanvas(d[plane[0]], ranges[plane[0]], canvas.width);
                     const y = mapToCanvas(d[plane[1]], ranges[plane[1]], canvas.height);
                     
-                    ctx.fillStyle = SPECTRAL_COLOR[d.spect];
+                    ctx.fillStyle = SPECTRAL_COLOR[d.spect]||SPECTRAL_COLOR['default'];
                     ctx.beginPath();
                     ctx.arc(x, canvas.height - y, 2, 0, 2 * Math.PI);
                     ctx.fill();
@@ -366,7 +496,7 @@
                     const x = mapToCanvas(d[plane[0]], ranges[plane[0]], canvas.width);
                     const y = mapToCanvas(d[plane[1]], ranges[plane[1]], canvas.height);
                     
-                    ctx.fillStyle = SPECTRAL_COLOR[d.spect];
+                    ctx.fillStyle = SPECTRAL_COLOR[d.spect]||SPECTRAL_COLOR['default'];
                     ctx.beginPath();
                     ctx.arc(x, canvas.height - y, 2, 0, 2 * Math.PI);
                     ctx.fill();
@@ -396,9 +526,11 @@
         }
 
         function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.aspect = 1;
             camera.updateProjectionMatrix();
             renderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
+            cssRenderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
+            //setupThreeScene();
         }
 
         function resetCamera() {
@@ -413,10 +545,58 @@
             controls.update();
         }
 
+function updateLabel(name) {
+    const cameraPosition = camera.position.clone();
+    const cameraForward = camera.getWorldDirection(new THREE.Vector3()).clone(); // 摄像机的前向方向（朝向目标）
+    const cameraUp = camera.up.clone(); // 摄像机的上方向
+    const nodes = [];
+
+    // 收集目标节点
+    cssScene.children.forEach(node => {
+        if (node.name === name) {
+            nodes.push(node);
+        }
+    });
+
+    // 遍历节点并调整旋转和位置
+    nodes.forEach(node => {
+        // 初始化原始位置（仅第一次调用时执行）
+        if (!node.originalPosition) {
+            node.originalPosition = node.position.clone(); // 保存初始位置
+        }
+
+        // 📌 关键修改：强制标签平面平行于摄像机视野平面
+        // 1. 设置标签的上方向为摄像机的上方向
+        node.up.copy(cameraUp);
+
+        // 2. 计算标签的正面方向为摄像机的前向方向（即标签平面与摄像机平面平行）
+        const desiredForward = cameraForward.clone().negate(); // 标签正面朝向摄像机（与摄像机前向相反）
+
+        // 3. 构建正确的旋转矩阵（确保标签平面与摄像机平面平行）
+        const rotationMatrix = new THREE.Matrix4();
+        rotationMatrix.lookAt(
+            node.position.clone().add(desiredForward), // 目标点（沿 desiredForward 方向）
+            node.position, // 当前标签位置（eye）
+            cameraUp // 上方向
+        );
+
+        // 提取旋转四元数
+        const rotation = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
+        node.quaternion.copy(rotation);
+
+        // 应用向下偏移（避免遮挡目标）
+        const offsetDistance = 0.2; // 可调整偏移距离
+        const direction = cameraUp.clone().multiplyScalar(-offsetDistance); // 沿摄像机的上方向反方向（向下）
+        node.position.copy(node.originalPosition).add(direction); // 基于原始位置偏移
+    });
+}
+
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
             renderer.render(scene, camera);
+            cssRenderer.render(cssScene, camera);
+            updateLabel("csslabel") // label朝向camera
         }
 
         init();
