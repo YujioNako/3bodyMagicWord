@@ -396,7 +396,7 @@
             if (cameraType === 'perspective') {
                 camera.position.set(DIST_LIMIT + 1.1 * calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
             } else {
-                camera.position.set(DIST_LIMIT * 1.1, 0, 0);
+                camera.position.set(DIST_LIMIT * 1.1 * Math.sqrt(3), 0, 0);
             }
             document.getElementById('posX').value = camera.position.x;
             document.getElementById('posY').value = camera.position.y;
@@ -614,7 +614,7 @@
             if (cameraType === 'perspective') {
                 camera.position.set(DIST_LIMIT + 1.1 * calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
             } else {
-                camera.position.set(DIST_LIMIT * 1.1, 0, 0);
+                camera.position.set(DIST_LIMIT * 1.1 * Math.sqrt(3), 0, 0);
                 camera.zoom = 1;
             }
             camera.up.set(0, 0, 1);
