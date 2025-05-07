@@ -1,34 +1,200 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
+
 <head>
-    <title>恒星3D可视化</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>恒星3D可视化</title>
     <style>
-        body { margin: 0; overflow: hidden; }
-        #container { display: flex; height: 100vh; width: 100vw; }
-        #three-container, #css3d-container { position: fixed; right: 0; }
-        #css3d-container { pointer-events: none !important; }
-        #controls { position: relative; right: 0; width: 350px; padding: 20px; background: #f0f0f0; overflow-y: auto; }
-        .canvas2d { width: 300px; height: 300px; margin: 10px 0; border: 1px solid #ccc; }
-        .control-group { margin-bottom: 15px; }
-        .control-group label { display: block; margin: 5px 0; }
-        .csslabel { background: rgba(255, 255, 255, 0); padding: 4px 8px; border-radius: 4px; font-family: Arial; font-size: 14px; color: #ddd; opacity: 0.4; user-select:none; white-space: nowrap; }
-        .csslabel:hover {opacity: 1.0;}
+        :root {
+            --primary-color: #1a1a1a;
+            --secondary-color: #2a2a2a;
+            --text-color: #ddd;
+            --accent-color: #00ff00;
+            --font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #three-container,
+        #css3d-container {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: min(100vw, 100vh);
+            height: min(100vw, 100vh);
+        }
+
+        #css3d-container {
+            pointer-events: none !important;
+        }
+
+        #controls {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 300px;
+            padding: 20px;
+            background: rgba(42, 42, 42, 0.9);
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            transition: transform 0.3s ease;
+        }
+
+        #controls:hover {
+            transform: translateX(0);
+        }
+
+        .canvas2d {
+            width: 250px;
+            height: 250px;
+            margin: 10px 0;
+            border: 1px solid var(--accent-color);
+            background-color: var(--secondary-color);
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label,
+        #controls label {
+            display: block;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        .csslabel {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 16px;
+            color: var(--text-color);
+            opacity: 0.6;
+            user-select: none;
+            white-space: nowrap;
+            transition: opacity 0.3s;
+        }
+
+        .csslabel:hover {
+            opacity: 1.0;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 1;
+            transition: opacity 0.5s;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-content {
+            background: var(--secondary-color);
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--accent-color);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        button,
+        select,
+        input {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            border: 1px solid var(--accent-color);
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover,
+        select:hover,
+        input:hover {
+            background-color: var(--accent-color);
+            color: var(--primary-color);
+        }
+
+        h3 {
+            color: var(--accent-color);
+            margin-bottom: 10px;
+        }
     </style>
 </head>
+
 <body>
     <div id="container">
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loading-content">
+                <div class="loader"></div>
+                <p style="margin-top: 10px">正在加载...请稍候</p>
+            </div>
+        </div>
         <div id="three-container"></div>
         <div id="css3d-container"></div>
         <div id="controls">
             <div class="control-group">
                 <h3>摄像机控制</h3>
                 <div class="control">
-                    <label>X: <input type="number" id="posX" step="1"></label>
-                    <label>Y: <input type="number" id="posY" step="1" value="0"></label>
-                    <label>Z: <input type="number" id="posZ" step="1" value="0"></label>
-                    <label>FOV: <input type="number" id="Fov" step="1" value="90"></label>
-                    <label>DistLimit: <input type="number" id="Dist" step="1" value="4"></label>
+                    <label>X: <input type="number" id="posX" required onchange="if(!this.value)this.value=0;"></label>
+                    <label>Y: <input type="number" id="posY" value="0" required onchange="if(!this.value)this.value=0;"></label>
+                    <label>Z: <input type="number" id="posZ" value="0" required onchange="if(!this.value)this.value=0;"></label>
+                    <label>FOV: <input type="number" id="Fov" value="45"></label>
+                    <label>DistLimit: <input type="number" id="Dist" value="10"></label>
+                </div>
+                <div class="control-group">
+                    <label for="cameraType">相机类型:
+                        <select id="cameraType">
+                            <option value="perspective">透视相机</option>
+                            <option value="orthographic">正交相机</option>
+                        </select>
+                    </label>
                 </div>
                 <h3>中心点控制</h3>
                 <div class="control">
@@ -38,8 +204,16 @@
                 </div>
                 <button onclick="resetCamera()">重置视角</button>
             </div>
+            <div class="control-group">
+                <label for="distanceUnit">距离单位:
+                    <select id="distanceUnit">
+                        <option value="lightyear">光年</option>
+                        <option value="parsec">秒差距</option>
+                    </select>
+                </label>
+            </div>
             <h3>Debug信息</h3>
-            <button onclick="debug=debug?false:true;this.textContent=debug?'隐藏Debug信息':'显示Debug信息';if(!debug)document.getElementById('debug').textContent=''">显示Debug信息</button>
+            <button onclick="toggleDebug()">显示Debug信息</button>
             <div id="debug"></div>
             <h3>投影视图</h3>
             <canvas id="yz-projection" width="300" height="300" class="canvas2d"></canvas>
@@ -55,66 +229,122 @@
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     <script>
         let scene, camera, renderer, controls, cssScene, cssRenderer;
-        // 全局变量：用于计算FPS
-        let fps = 0;
-        let frameCount = 0;
-        let startTime = performance.now();
-        let debug = false;
-        let stars = [], data = [], rawRows = null, ranges = { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } };
-        const SPECTRAL_COLOR = { 'O': '#9bb0ff', 'B': '#aabfff', 'A': '#cad7ff', 'F': '#f8f7ff', 'G': '#ffe169', 'K': '#ffd27a', 'M': '#ffb347', 'default': '#666' };
-        let DIST_LIMIT = 4;
-        let cubeFrame, starPoints = [], cssLabels = [];
+        const PARSEC = 3.2615637771418798291;
+        let fps = 0,
+            frameCount = 0,
+            startTime = performance.now(),
+            debug = false;
+        let data = [],
+            rawRows = null,
+            ranges = {
+                x: {
+                    min: 0,
+                    max: 0
+                },
+                y: {
+                    min: 0,
+                    max: 0
+                },
+                z: {
+                    min: 0,
+                    max: 0
+                }
+            };
+        const SPECTRAL_COLOR = {
+            'O': '#9bb0ff',
+            'B': '#aabfff',
+            'A': '#cad7ff',
+            'F': '#f8f7ff',
+            'G': '#ffe169',
+            'K': '#ffd27a',
+            'M': '#ffb347',
+            'default': '#666'
+        };
+        let DIST_LIMIT = 10,
+            cubeFrame, starPoints = [],
+            cssLabels = [];
+        const MAX_LABELS = 100000; // 限制标签数量
 
-        // 防抖函数
-        function debounce(func, wait) {
-            let timeout;
-            return function() {
-                clearTimeout(timeout);
-                timeout = setTimeout(func, wait);
+        // 工具函数：节流
+        function throttle(func, limit) {
+            let inThrottle;
+            return function(...args) {
+                if (!inThrottle) {
+                    func.apply(this, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
             };
         }
 
-        // 初始化
+        // 工具函数：防抖
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        async function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+
+        async function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
         async function init() {
-            await loadCSVData(); // 一次性加载数据
-            setupThreeScene();   // 初始化场景
-            updateStarsAndLabels(); // 初始更新星群和标注
+            await loadCSVData();
+            setupThreeScene();
+            updateStarsAndLabels();
             setupProjectionCanvases();
             setupEventListeners();
+            hideLoading();
             animate();
         }
 
-        // 加载CSV数据（仅执行一次）
+        // 异步加载数据并使用TypedArray
         async function loadCSVData() {
             if (!rawRows) {
                 const response = await fetch('hygdata_v41.csv.gz');
                 const arrayBuffer = await response.arrayBuffer();
-                const decompressedText = pako.inflate(arrayBuffer, { to: 'string' });
+                const decompressedText = pako.inflate(arrayBuffer, {
+                    to: 'string'
+                });
                 rawRows = decompressedText.split('\n').slice(1);
             }
-            updateData(); // 根据当前参数过滤数据
+            updateData();
         }
 
-        // 更新数据（过滤和转换）
+        // 数据过滤和TypedArray存储
         function updateData() {
             const cenX = parseFloat(document.getElementById('cenX').value) || 0;
             const cenY = parseFloat(document.getElementById('cenY').value) || 0;
             const cenZ = parseFloat(document.getElementById('cenZ').value) || 0;
-            DIST_LIMIT = parseFloat(document.getElementById('Dist').value) || 4;
+            DIST_LIMIT = parseFloat(document.getElementById('Dist').value) || 10;
+            const distanceUnit = document.getElementById('distanceUnit').value;
+            const unitFactor = distanceUnit === 'parsec' ? 1 : PARSEC;
 
-            data = rawRows.map(row => {
+            const filteredData = rawRows.map(row => {
                 const cols = row.split(',');
+                const x = unitFactor * parseFloat(cols[17]) - cenX;
+                const y = unitFactor * parseFloat(cols[18]) - cenY;
+                const z = unitFactor * parseFloat(cols[19]) - cenZ;
                 return {
-                    x: parseFloat(cols[17]) - cenX,
-                    y: parseFloat(cols[18]) - cenY,
-                    z: parseFloat(cols[19]) - cenZ,
+                    x,
+                    y,
+                    z,
                     mag: parseFloat(cols[13]),
                     name: cols[6],
-                    spect: cols[15]?.[0]?.toUpperCase() && 'OBAFGKM'.includes(cols[15]?.[0]?.toUpperCase()) ? cols[15]?.[0]?.toUpperCase() : (cols[15]?.[1]?.toUpperCase() ?? 'default'),
-                    dist: parseFloat(cols[9])
+                    spect: cols[15]?.[0]?.toUpperCase() && 'OBAFGKM'.includes(cols[15]?.[0]?.toUpperCase()) ?
+                        cols[15][0].toUpperCase() :
+                        (cols[15]?.[1]?.toUpperCase() ?? 'default'),
+                    dist: unitFactor * parseFloat(cols[9])
                 };
             }).filter(d => !isNaN(d.x) && Math.abs(d.x) <= DIST_LIMIT && Math.abs(d.y) <= DIST_LIMIT && Math.abs(d.z) <= DIST_LIMIT);
 
+            data = filteredData;
             ranges.x.min = Math.min(...data.map(d => d.x));
             ranges.x.max = Math.max(...data.map(d => d.x));
             ranges.y.min = Math.min(...data.map(d => d.y));
@@ -128,32 +358,46 @@
             return DIST_LIMIT / Math.tan(fovRadians / 2);
         }
 
-        // 设置Three.js场景（仅初始化一次）
+        // 场景设置和视锥剔除
         function setupThreeScene() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(90, 1, 0.1, 10000);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            const cameraType = document.getElementById('cameraType').value;
+            if (cameraType === 'perspective') {
+                camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10000);
+            } else {
+                const size = 1.1 * DIST_LIMIT;
+                camera = new THREE.OrthographicCamera(-size, size, size, -size, 0.1, 10000);
+            }
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+            });
             renderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
+            document.getElementById('three-container').innerHTML = "";
             document.getElementById('three-container').appendChild(renderer.domElement);
 
             cssScene = new THREE.Scene();
-            cssRenderer = new THREE.CSS3DRenderer({ antialias: true });
+            cssRenderer = new THREE.CSS3DRenderer({
+                antialias: true
+            });
             cssRenderer.setSize(Math.min(window.innerWidth, window.innerHeight), Math.min(window.innerWidth, window.innerHeight));
             cssRenderer.domElement.style.pointerEvents = 'none';
+            document.getElementById('css3d-container').innerHTML = "";
             document.getElementById('css3d-container').appendChild(cssRenderer.domElement);
 
-            const parent = new THREE.Group();
-            scene.add(parent);
-
-            // 静态立方体框架
             const geometry_square = new THREE.BoxGeometry(2 * DIST_LIMIT, 2 * DIST_LIMIT, 2 * DIST_LIMIT);
             const edges = new THREE.EdgesGeometry(geometry_square);
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: DIST_LIMIT / 1000 });
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: 0x00ff00,
+                linewidth: DIST_LIMIT / 1000
+            });
             cubeFrame = new THREE.LineSegments(edges, lineMaterial);
             scene.add(cubeFrame);
 
-            // 初始摄像机位置
-            camera.position.set(DIST_LIMIT + 1.1 * calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
+            if (cameraType === 'perspective') {
+                camera.position.set(DIST_LIMIT + 1.1 * calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
+            } else {
+                camera.position.set(DIST_LIMIT * 1.1, 0, 0);
+            }
             document.getElementById('posX').value = camera.position.x;
             document.getElementById('posY').value = camera.position.y;
             document.getElementById('posZ').value = camera.position.z;
@@ -165,15 +409,20 @@
             resetCamera();
         }
 
-        // 更新星群和标注
+        // 批量渲染和标签优化
         function updateStarsAndLabels() {
-            // 清除现有星群和标注
-            starPoints.forEach(points => scene.remove(points));
-            cssLabels.forEach(label => cssScene.remove(label));
+            starPoints.forEach(points => {
+                scene.remove(points);
+                points.geometry.dispose();
+                points.material.dispose();
+            });
+            cssLabels.forEach(label => {
+                cssScene.remove(label);
+                label.element.remove();
+            });
             starPoints = [];
             cssLabels = [];
 
-            // 创建星群几何体和材质
             const positions = new Float32Array(data.length * 3);
             const materialIndices = new Uint8Array(data.length);
             const nameIndices = [];
@@ -185,9 +434,27 @@
                 nameIndices.push(d.name === "\"\"" ? '' : d.name);
             });
 
-            const groups = [[], [], [], [], [], [], [], []];
-            const names = [[], [], [], [], [], [], [], []];
-            for (let i = 0; i < positions.length / 3; i++) {
+            const groups = [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+            ];
+            const names = [
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                []
+            ];
+            for (let i = 0; i < data.length; i++) {
                 const index = materialIndices[i];
                 groups[index].push(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
                 names[index].push(nameIndices[i]);
@@ -199,78 +466,68 @@
                 return geometry;
             });
 
-            function createCircularMaterial(options = {}) {
-                const { color = '#ff0000', textureSize = 256, materialOptions = {} } = options;
+            const materials = Object.keys(SPECTRAL_COLOR).map((type, i) => {
                 const canvas = document.createElement('canvas');
-                canvas.width = textureSize;
-                canvas.height = textureSize;
+                canvas.width = 32;
+                canvas.height = 32;
                 const ctx = canvas.getContext('2d');
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-                const radius = centerX;
                 ctx.beginPath();
-                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-                ctx.fillStyle = color;
+                ctx.arc(16, 16, 16, 0, Math.PI * 2);
+                ctx.fillStyle = SPECTRAL_COLOR[type];
                 ctx.fill();
                 const texture = new THREE.CanvasTexture(canvas);
-                texture.needsUpdate = true;
-                return new THREE.PointsMaterial({ map: texture, transparent: true, alphaTest: 0.5, size: 200 / Math.pow(camera.fov, 1.6), ...materialOptions });
-            }
-
-            const materials = [
-                createCircularMaterial({ color: SPECTRAL_COLOR['O'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['B'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['A'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['F'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['G'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['K'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['M'] }),
-                createCircularMaterial({ color: SPECTRAL_COLOR['default'] })
-            ];
-
-            materials.forEach((material, i) => {
-                const points = new THREE.Points(geometries[i], material);
-                scene.add(points);
-                starPoints.push(points);
+                return new THREE.PointsMaterial({
+                    map: texture,
+                    transparent: true,
+                    alphaTest: 0.5,
+                    size: document.getElementById('cameraType').value === 'perspective' ? 1 : 8
+                });
             });
 
-            // 更新CSS3D标注
-            let index = 0;
+            materials.forEach((material, i) => {
+                if (geometries[i].getAttribute('position').count > 0) {
+                    const points = new THREE.Points(geometries[i], material);
+                    points.frustumCulled = true;
+                    scene.add(points);
+                    starPoints.push(points);
+                }
+            });
+
+            let labelCount = 0;
             geometries.forEach((geometry, materialIndex) => {
                 const positions = geometry.getAttribute('position').array;
-                for (let i = 0; i < positions.length / 3; i++) {
-                    //if (data[index * positions.length / 3 + i]?.mag < 6) { // 仅为亮星(mag<6)添加标注
-                    if (true) {
+                for (let i = 0; i < positions.length / 3 && labelCount < MAX_LABELS; i++) {
+                    if (names[materialIndex][i]) {
                         const div = document.createElement('div');
                         div.className = 'csslabel';
-                        div.textContent = names[materialIndex][i] || '';
+                        div.textContent = names[materialIndex][i];
                         const cssObject = new THREE.CSS3DObject(div);
                         cssObject.position.set(positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]);
                         cssObject.scale.set(0.02, 0.02, 1);
                         cssObject.position.x += 0.05;
                         cssScene.add(cssObject);
                         cssLabels.push(cssObject);
+                        labelCount++;
                     }
                 }
-                index++;
             });
 
-            // 更新立方体框架
             scene.remove(cubeFrame);
             const geometry_square = new THREE.BoxGeometry(2 * DIST_LIMIT, 2 * DIST_LIMIT, 2 * DIST_LIMIT);
             const edges = new THREE.EdgesGeometry(geometry_square);
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: DIST_LIMIT / 1000 });
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: 0x00ff00,
+                linewidth: DIST_LIMIT / 1000
+            });
             cubeFrame = new THREE.LineSegments(edges, lineMaterial);
             scene.add(cubeFrame);
         }
 
-        // 设置投影画布
         function setupProjectionCanvases() {
             updateProjections();
         }
 
-        // 更新投影视图
-        function updateProjections() {
+        const updateProjections = debounce(() => {
             ['xy', 'xz', 'yz'].forEach(plane => {
                 const canvas = document.getElementById(`${plane}-projection`);
                 const ctx = canvas.getContext('2d');
@@ -306,32 +563,42 @@
                     ctx.fill();
                 });
             });
-        }
+        }, 300);
 
         function mapToCanvas(value, range, canvasSize) {
             return ((value + 1.1 * DIST_LIMIT) / (2.2 * DIST_LIMIT)) * canvasSize;
         }
 
-        // 事件监听
         function setupEventListeners() {
-            window.addEventListener('resize', onWindowResize);
-            ['posX', 'posY', 'posZ', 'Fov', 'Dist', 'cenX', 'cenY', 'cenZ'].forEach(id => {
-                document.getElementById(id).addEventListener('change', debounce(() => {
-                    DIST_LIMIT = parseFloat(document.getElementById('Dist').value) || 4;
-                    if (['Dist', 'cenX', 'cenY', 'cenZ'].includes(id)) {
+            window.addEventListener('resize', throttle(onWindowResize, 200));
+            ['posX', 'posY', 'posZ', 'Fov', 'Dist', 'cenX', 'cenY', 'cenZ', 'cameraType', 'distanceUnit'].forEach(id => {
+                const debouncedUpdate = debounce(async () => {
+                    DIST_LIMIT = parseFloat(document.getElementById('Dist').value) || 10;
+                    if (['Dist', 'cenX', 'cenY', 'cenZ', 'distanceUnit'].includes(id)) {
                         updateData();
                         updateStarsAndLabels();
                         updateProjections();
                     }
+                    if (id === 'cameraType') {
+                        setupThreeScene();
+                        updateStarsAndLabels();
+                    }
                     camera.position.set(
-                        parseFloat(document.getElementById('posX').value) || camera.position.x,
-                        parseFloat(document.getElementById('posY').value) || camera.position.y,
-                        parseFloat(document.getElementById('posZ').value) || camera.position.z
+                        parseFloat(document.getElementById('posX').value),
+                        parseFloat(document.getElementById('posY').value),
+                        parseFloat(document.getElementById('posZ').value)
                     );
-                    camera.fov = parseFloat(document.getElementById('Fov').value) || 90;
+                    if (camera.type === 'PerspectiveCamera') {
+                        camera.fov = parseFloat(document.getElementById('Fov').value) || 45;
+                    }
                     camera.updateProjectionMatrix();
                     controls.update();
-                }, 300));
+                    hideLoading();
+                }, 300);
+                document.getElementById(id).addEventListener('change', async () => {
+                    await showLoading();
+                    debouncedUpdate();
+                });
             });
         }
 
@@ -343,18 +610,26 @@
         }
 
         function resetCamera() {
-            camera.position.set(DIST_LIMIT + 1.1 * calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
+            const cameraType = document.getElementById('cameraType').value;
+            if (cameraType === 'perspective') {
+                camera.position.set(DIST_LIMIT + 1.1 * calculateDistance(camera.fov, DIST_LIMIT), 0, 0);
+            } else {
+                camera.position.set(DIST_LIMIT * 1.1, 0, 0);
+                camera.zoom = 1;
+            }
             camera.up.set(0, 0, 1);
             controls.target.set(0, 0, 0);
             controls.update();
             document.getElementById('posX').value = camera.position.x.toFixed(2);
             document.getElementById('posY').value = camera.position.y.toFixed(2);
             document.getElementById('posZ').value = camera.position.z.toFixed(2);
-            document.getElementById('Fov').value = camera.fov;
+            if (camera.type === 'PerspectiveCamera') {
+                document.getElementById('Fov').value = camera.fov;
+            }
             document.getElementById('Dist').value = DIST_LIMIT;
         }
 
-        function updateLabel(name) {
+        function updateLabel() {
             const cameraForward = camera.getWorldDirection(new THREE.Vector3()).clone();
             const cameraUp = camera.up.clone();
             cssLabels.forEach(node => {
@@ -367,28 +642,30 @@
                     cameraUp
                 );
                 node.quaternion.setFromRotationMatrix(rotationMatrix);
-                const offsetDistance = 0.2;
+                const offsetDistance = 0.6;
                 node.position.copy(node.originalPosition).add(cameraUp.clone().multiplyScalar(-offsetDistance));
             });
         }
 
         function updateCameraInfo() {
             const debugDiv = document.getElementById("debug");
+            const distanceUnit = document.getElementById('distanceUnit').value;
             debugDiv.innerHTML = `
                 Total Target: ${data.length}<br>
                 Camera Position: (${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)})<br>
                 Rotation (Euler): (${camera.rotation.x.toFixed(2)}, ${camera.rotation.y.toFixed(2)}, ${camera.rotation.z.toFixed(2)})<br>
                 Up Vector: (${camera.up.x.toFixed(2)}, ${camera.up.y.toFixed(2)}, ${camera.up.z.toFixed(2)})<br>
                 FPS: ${fps}<br>
-                FOV: ${camera.fov}°<br>
+                FOV: ${camera.type === 'PerspectiveCamera' ? camera.fov + '°' : 'N/A'}<br>
+                Zoom: ${camera.type === 'PerspectiveCamera' ? 'N/A' : camera.zoom.toFixed(3)}<br>
                 Near/Far: ${camera.near} - ${camera.far}<br>
-                Target Position: (${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)})
+                Target Position: (${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)})<br>
+                Distance Unit: ${distanceUnit}
             `;
         }
 
         function calculateFrame() {
             const currentTime = performance.now();
-            // 每秒计算一次FPS
             frameCount++;
             if (currentTime - startTime >= 1000) {
                 fps = frameCount;
@@ -398,56 +675,34 @@
         }
 
         function mergeAndSave() {
-            // 1. 获取三个源Canvas元素
             const yz = document.getElementById('yz-projection');
             const xz = document.getElementById('xz-projection');
             const xy = document.getElementById('xy-projection');
 
-            // 2. 创建合成画布（600x600像素，每宫格300x300）
             const mergedCanvas = document.createElement('canvas');
             mergedCanvas.width = 600;
             mergedCanvas.height = 600;
             const ctx = mergedCanvas.getContext('2d');
 
-            // 3. 将源Canvas绘制到四宫格的三个位置
-            // 左上：yz-projection
             ctx.drawImage(yz, 0, 0);
-            // 右上：xz-projection
             ctx.drawImage(xz, 300, 0);
-            // 左下：xy-projection
             ctx.drawImage(xy, 0, 300);
 
-            // 4. 右下宫格：黑色背景 + 标题和注释
-            // 4.1 填充黑色背景
             ctx.fillStyle = '#000';
             ctx.fillRect(300, 300, 300, 300);
 
-            // 4.2 绘制文字（标题和注释）
-            ctx.fillStyle = '#fff';           // 白色文字（与黑色背景对比）
-            ctx.font = 'bold 18px Arial';     // 标题字体
-            ctx.textAlign = 'center';         // 文字居中对齐
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText("MagicWord in Three-Body Problem", 300 + 150, 300 + 50);
 
-            // 标题：MagicWord in Three-Body Problem
-            ctx.fillText(
-                "MagicWord in Three-Body Problem",
-                300 + 150,                    // x轴中心位置（300+150=450）
-                300 + 50                      // y轴位置（距顶部50px）
-            );
-
-            // 注释信息：DistLimit: xxx, Center: 0,0,0
-            ctx.font = '14px Arial';          // 注释字体
-            const note = `DistLimit: ${DIST_LIMIT}\nTotal Target: ${data.length}\nCenter: ${document.getElementById("cenX").value},${document.getElementById("cenY").value},${document.getElementById("cenZ").value}`;
-            const lines = note.split('\n');   // 分割多行文本
-
+            ctx.font = '14px Arial';
+            const note = `DistLimit: ${DIST_LIMIT} ${document.getElementById('distanceUnit').value}\nTotal Target: ${data.length}\nCenter: ${document.getElementById("cenX").value},${document.getElementById("cenY").value},${document.getElementById("cenZ").value}`;
+            const lines = note.split('\n');
             lines.forEach((line, index) => {
-                ctx.fillText(
-                    line,
-                    300 + 150,                // x轴中心位置
-                    300 + 100 + index * 25    // y轴位置（从距顶部100px开始，每行间隔25px）
-                );
+                ctx.fillText(line, 300 + 150, 300 + 100 + index * 25);
             });
 
-            // 4. 将合成后的画布转换为图片数据并下载
             mergedCanvas.toBlob((blob) => {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -460,19 +715,24 @@
             }, 'image/png');
         }
 
+        function toggleDebug() {
+            debug = !debug;
+            this.textContent = debug ? '隐藏Debug信息' : '显示Debug信息';
+            if (!debug) document.getElementById('debug').textContent = '';
+        }
+
         function animate() {
             calculateFrame();
             requestAnimationFrame(animate);
-            if(debug) {
-                updateCameraInfo();
-            }
+            if (debug) updateCameraInfo();
             controls.update();
             renderer.render(scene, camera);
             cssRenderer.render(cssScene, camera);
-            updateLabel("csslabel");
+            updateLabel();
         }
 
         init();
     </script>
 </body>
+
 </html>
